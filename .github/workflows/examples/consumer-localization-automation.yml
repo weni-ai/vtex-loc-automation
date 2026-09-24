@@ -1,0 +1,48 @@
+# Copy to each weni-ai product repo as .github/workflows/localization-automation.yml
+#
+# Also required at repo root: crowdin.yml with project_id + files mappings.
+# Requires org secrets LOC_GITHUB_APP_ID + LOC_GITHUB_APP_PRIVATE_KEY and the
+# Loc GitHub App installed on this repo and on vtex/localization-tools.
+# Host: weni-ai/vtex-loc-automation (lock + mint/dispatch). Ticket runs on vtex/localization-tools.
+
+name: Localization automation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lock:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: weni-ai/vtex-loc-automation/.github/workflows/localization-lock.yml@main
+
+  ticket:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint GitHub App token
+        id: app-token
+        uses: weni-ai/vtex-loc-automation/.github/actions/mint-loc-github-app-token@main
+        with:
+          repository: vtex/localization-tools
+          app-id: ${{ secrets.LOC_GITHUB_APP_ID }}
+          private-key: ${{ secrets.LOC_GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Dispatch ticket to localization-tools
+        uses: weni-ai/vtex-loc-automation/.github/actions/dispatch-loc-ticket@main
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          target_repository: vtex/localization-tools
+          consumer_repository: ${{ github.repository }}
+          pr_number: ${{ github.event.pull_request.number }}
