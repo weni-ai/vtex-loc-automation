@@ -1,0 +1,56 @@
+# Mint a short-lived GitHub App installation token for one owner/name repo.
+# Org secrets (or repo secrets during pilot): LOC_GITHUB_APP_ID, LOC_GITHUB_APP_PRIVATE_KEY.
+# Prefer this over a PAT (DX CI/CD guidance — see CICD-1344).
+
+name: Mint Loc GitHub App token
+description: >
+  Exchange Loc GitHub App credentials for an installation token scoped to one
+  repository (owner/name).
+
+inputs:
+  repository:
+    description: Target repository as owner/name (e.g. vtex/newtail-admin)
+    required: true
+  app-id:
+    description: GitHub App ID
+    required: true
+  private-key:
+    description: GitHub App private key PEM
+    required: true
+
+outputs:
+  token:
+    description: Installation access token
+    value: ${{ steps.mint.outputs.token }}
+  owner:
+    description: Repository owner
+    value: ${{ steps.parts.outputs.owner }}
+  name:
+    description: Repository name (without owner)
+    value: ${{ steps.parts.outputs.name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Parse owner/name
+      id: parts
+      shell: bash
+      env:
+        FULL: ${{ inputs.repository }}
+      run: |
+        set -euo pipefail
+        if [[ "$FULL" != */* ]] || [[ "$FULL" == */*/* ]]; then
+          echo "repository must be owner/name, got: ${FULL}" >&2
+          exit 1
+        fi
+        echo "owner=${FULL%%/*}" >> "$GITHUB_OUTPUT"
+        echo "name=${FULL##*/}" >> "$GITHUB_OUTPUT"
+
+    - name: Create GitHub App token
+      id: mint
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ steps.parts.outputs.owner }}
+        repositories: ${{ steps.parts.outputs.name }}
