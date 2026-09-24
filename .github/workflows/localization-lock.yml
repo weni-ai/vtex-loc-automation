@@ -1,0 +1,26 @@
+# Reusable lock for weni-ai consumers.
+# Callers in the same org:
+#   uses: weni-ai/vtex-loc-automation/.github/workflows/localization-lock.yml@main
+#
+# Ticket/agent pipeline stays on vtex/localization-tools (via repository_dispatch).
+
+name: Localization lock
+
+on:
+  workflow_call:
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout consumer repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run localization lock
+        # Full path required: relative ./ resolves to the consumer workspace.
+        uses: weni-ai/vtex-loc-automation/.github/actions/localization-lock@main
