@@ -1,0 +1,72 @@
+# POST repository_dispatch to vtex/localization-tools (or another target repo).
+# Hosted on weni-ai/vtex-loc-automation for in-org `uses:` (weni is outside VTEX Enterprise).
+
+name: Dispatch Loc ticket
+description: >
+  Fire a localization-ticket repository_dispatch with consumer repo + PR number.
+
+inputs:
+  token:
+    description: GitHub token with repository_dispatch on the target repo
+    required: true
+  target_repository:
+    description: Repository that runs localization-ticket.yml (owner/name)
+    required: false
+    default: vtex/localization-tools
+  consumer_repository:
+    description: Consumer repository that merged (owner/name)
+    required: true
+  pr_number:
+    description: Merged pull request number
+    required: true
+  tools_ref:
+    description: Optional git ref of localization-tools scripts to checkout
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: repository_dispatch localization-ticket
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        TARGET_REPOSITORY: ${{ inputs.target_repository }}
+        CONSUMER_REPOSITORY: ${{ inputs.consumer_repository }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+        TOOLS_REF: ${{ inputs.tools_ref }}
+      run: |
+        set -euo pipefail
+        if [ -z "${PR_NUMBER}" ] || [ "${PR_NUMBER}" = "null" ]; then
+          echo "pr_number is required" >&2
+          exit 1
+        fi
+        if [ -n "${TOOLS_REF}" ]; then
+          payload=$(jq -n \
+            --arg repo "${CONSUMER_REPOSITORY}" \
+            --arg pr "${PR_NUMBER}" \
+            --arg ref "${TOOLS_REF}" \
+            '{
+              event_type: "localization-ticket",
+              client_payload: {
+                repository: $repo,
+                pr_number: $pr,
+                tools_ref: $ref
+              }
+            }')
+        else
+          payload=$(jq -n \
+            --arg repo "${CONSUMER_REPOSITORY}" \
+            --arg pr "${PR_NUMBER}" \
+            '{
+              event_type: "localization-ticket",
+              client_payload: {
+                repository: $repo,
+                pr_number: $pr
+              }
+            }')
+        fi
+        printf '%s' "$payload" | gh api --method POST \
+          "repos/${TARGET_REPOSITORY}/dispatches" \
+          --input -
+        echo "Dispatched localization-ticket for ${CONSUMER_REPOSITORY}#${PR_NUMBER} → ${TARGET_REPOSITORY}"
