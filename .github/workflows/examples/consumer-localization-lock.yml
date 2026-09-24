@@ -1,0 +1,19 @@
+# Copy to product repo as .github/workflows/localization-lock.yml
+#
+# Requires crowdin.yml files mappings at repo root (project_id not used by lock).
+
+name: Localization lock
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lock:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: weni-ai/vtex-loc-automation/.github/workflows/localization-lock.yml@main
