@@ -1,0 +1,104 @@
+# Composite lock check. Bundles lock_cli + localization_automation so consumers
+# can `uses:` this action (or the reusable localization-lock.yml) without cloning
+# the private tools repo with their GITHUB_TOKEN.
+#
+# Used by: .github/workflows/localization-lock.yml
+
+name: Localization lock
+description: >
+  Fail when translation locale files change (Crowdin siblings / non-source
+  bundle keys). Expects the consumer repo already checked out at github.workspace.
+
+inputs:
+  repo-root:
+    description: Consumer repository root (default github.workspace)
+    required: false
+    default: ${{ github.workspace }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      shell: bash
+      run: pip install -r "${{ github.action_path }}/requirements.txt"
+
+    - name: Resolve diff range
+      id: range
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "base_sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          echo "head_ref=${{ github.event.pull_request.head.ref }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "base_sha=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "head_ref=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Skip lock for agent temporary translation PRs
+      id: skip
+      shell: bash
+      env:
+        HEAD_REF: ${{ steps.range.outputs.head_ref }}
+      run: |
+        if [[ "${HEAD_REF}" == l10n/agent-* ]]; then
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+          echo "Skipping localization lock for agent branch ${HEAD_REF}"
+          exit 0
+        fi
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if jq -e '
+            [.pull_request.labels[]?.name | ascii_downcase == "localization-agent"] | any
+          ' "$GITHUB_EVENT_PATH" >/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping localization lock for localization-agent label"
+            exit 0
+          fi
+        fi
+        echo "skip=false" >> "$GITHUB_OUTPUT"
+
+    - name: Run localization lock
+      if: steps.skip.outputs.skip != 'true'
+      id: lock_check
+      shell: bash
+      working-directory: ${{ inputs.repo-root }}
+      env:
+        COMMENT_FILE: ${{ runner.temp }}/localization-lock-comment.md
+        ACTION_PATH: ${{ github.action_path }}
+        BASE_SHA: ${{ steps.range.outputs.base_sha }}
+        HEAD_SHA: ${{ steps.range.outputs.head_sha }}
+        REPO_ROOT: ${{ inputs.repo-root }}
+      run: |
+        set -o pipefail
+        python "${ACTION_PATH}/lock_cli.py" lock \
+          --repo-root "${REPO_ROOT}" \
+          --base-sha "${BASE_SHA}" \
+          --head-sha "${HEAD_SHA}" \
+          --comment-file "${COMMENT_FILE}" \
+          | tee "${RUNNER_TEMP}/localization-lock.log"
+
+    - name: Comment on PR when lock fails
+      if: >-
+        failure() &&
+        steps.skip.outputs.skip != 'true' &&
+        github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        COMMENT_FILE: ${{ runner.temp }}/localization-lock-comment.md
+      run: |
+        set -euo pipefail
+        if [ ! -s "${COMMENT_FILE}" ]; then
+          echo "No PR comment file produced; skipping PR comment"
+          exit 0
+        fi
+        gh pr comment "${{ github.event.pull_request.number }}" \
+          --repo "${{ github.repository }}" \
+          --body-file "${COMMENT_FILE}"
+        echo "Posted localization lock failure comment on PR #${{ github.event.pull_request.number }}"
