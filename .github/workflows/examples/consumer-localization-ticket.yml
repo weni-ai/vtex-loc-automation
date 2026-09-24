@@ -1,0 +1,34 @@
+# Copy to product repo as .github/workflows/localization-ticket.yml
+#
+# Also required at repo root: crowdin.yml with project_id + files mappings.
+
+name: Localization ticket
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ticket:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint GitHub App token
+        id: app-token
+        uses: weni-ai/vtex-loc-automation/.github/actions/mint-loc-github-app-token@main
+        with:
+          repository: vtex/localization-tools
+          app-id: ${{ secrets.LOC_GITHUB_APP_ID }}
+          private-key: ${{ secrets.LOC_GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Dispatch ticket to localization-tools
+        uses: weni-ai/vtex-loc-automation/.github/actions/dispatch-loc-ticket@main
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          target_repository: vtex/localization-tools
+          consumer_repository: ${{ github.repository }}
+          pr_number: ${{ github.event.pull_request.number }}
