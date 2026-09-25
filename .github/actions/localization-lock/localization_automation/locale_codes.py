@@ -8,24 +8,24 @@ from typing import Literal
 
 SourceKind = Literal["EN", "PT", "ES"]
 
-# Basename is only a locale token: en.json, pt-BR.yaml, fr.po
+# Basename is only a locale token: en.json, pt-BR.yaml, pt_br.json, fr.po
 _BASENAME_LOCALE = re.compile(
-    r"^(?P<locale>[A-Za-z]{2}(?:-[A-Za-z]{2})?)\."
+    r"^(?P<locale>[A-Za-z]{2}(?:[-_][A-Za-z]{2})?)\."
     r"(?:json|ya?ml|po|properties|tsx?|jsx?|xml)$",
     re.IGNORECASE,
 )
-# Resource with culture suffix: CheckoutMessages.pt-BR.resx
+# Resource with culture suffix: CheckoutMessages.pt-BR.resx / .pt_br.resx
 _SUFFIX_LOCALE = re.compile(
-    r"\.(?P<locale>[A-Za-z]{2}(?:-[A-Za-z]{2})?)\.(?:resx|restext)$",
+    r"\.(?P<locale>[A-Za-z]{2}(?:[-_][A-Za-z]{2})?)\.(?:resx|restext)$",
     re.IGNORECASE,
 )
-# Fallback: .pt-BR. before final extension
+# Fallback: .pt-BR. / .pt_br. before final extension
 _DOT_LOCALE_BEFORE_EXT = re.compile(
-    r"\.(?P<locale>[A-Za-z]{2}(?:-[A-Za-z]{2})?)\.[^.]+$",
+    r"\.(?P<locale>[A-Za-z]{2}(?:[-_][A-Za-z]{2})?)\.[^.]+$",
     re.IGNORECASE,
 )
 _PATH_SEGMENT_LOCALE = re.compile(
-    r"^(?P<locale>[A-Za-z]{2}(?:-[A-Za-z]{2})?)$",
+    r"^(?P<locale>[A-Za-z]{2}(?:[-_][A-Za-z]{2})?)$",
     re.IGNORECASE,
 )
 
@@ -189,6 +189,14 @@ def map_file_token_to_jira(token: str) -> str | None:
         if normalized == alias:
             return FILE_TOKEN_TO_JIRA[alias]
     return None
+
+
+def crowdin_id_for_file_token(token: str) -> str | None:
+    """Map a repo filename locale token to a Crowdin language id via Jira aliases."""
+    jira = map_file_token_to_jira(token)
+    if not jira:
+        return None
+    return JIRA_TO_CROWDIN.get(jira)
 
 
 def extract_locale_token_from_path(relative_path: str) -> str | None:
