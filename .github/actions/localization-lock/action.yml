@@ -30,10 +30,24 @@ runs:
     - name: Resolve diff range
       id: range
       shell: bash
+      working-directory: ${{ inputs.repo-root }}
       run: |
+        set -euo pipefail
         if [ "${{ github.event_name }}" = "pull_request" ]; then
-          echo "base_sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
-          echo "head_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          API_BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          BASE_REF="${{ github.base_ref }}"
+          # merge-base with the live base branch tip — pull_request.base.sha can
+          # lag on long-lived PRs and would include unrelated main history.
+          if git rev-parse --verify --quiet "origin/${BASE_REF}" >/dev/null; then
+            BASE_SHA=$(git merge-base "origin/${BASE_REF}" "$HEAD_SHA")
+            echo "lock base_sha=${BASE_SHA} (merge-base origin/${BASE_REF}…${HEAD_SHA}; api base.sha=${API_BASE_SHA})"
+          else
+            BASE_SHA="$API_BASE_SHA"
+            echo "lock base_sha=${BASE_SHA} (fallback api base.sha; origin/${BASE_REF} missing)"
+          fi
+          echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
           echo "head_ref=${{ github.event.pull_request.head.ref }}" >> "$GITHUB_OUTPUT"
         else
           echo "base_sha=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
